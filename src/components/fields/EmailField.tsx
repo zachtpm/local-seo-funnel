@@ -1,0 +1,93 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { useFormContext } from '../FormContext';
+import { FunnelButton } from './FunnelButton';
+import { motion } from 'framer-motion';
+
+export function EmailField() {
+  const { currentField, formData, updateFormData, nextField, prevField } = useFormContext();
+  const [value, setValue] = useState(formData.email || '');
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []);
+
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleContinue = () => {
+    if (!value.trim()) {
+      setError('Email is required');
+      return;
+    }
+    if (!validateEmail(value)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    setError('');
+    updateFormData({ email: value.trim() });
+    nextField();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && value.trim()) {
+      handleContinue();
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center leading-tight">
+        {currentField.label}
+      </h1>
+      <p className="text-gray-500 text-center text-base">
+        We'll send your consultation details here
+      </p>
+
+      <div className="space-y-2">
+        <motion.input
+          ref={inputRef}
+          type="email"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError('');
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={currentField.placeholder}
+          whileFocus={{ scale: 1.01 }}
+          className={`
+            w-full h-14 px-4 rounded-xl text-lg
+            bg-white border-2 transition-all duration-200
+            placeholder:text-gray-400
+            focus:outline-none focus:ring-4 focus:ring-blue-500/20
+            ${error ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'}
+          `}
+        />
+        {error && (
+          <motion.p
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-red-500 text-sm pl-1"
+          >
+            {error}
+          </motion.p>
+        )}
+      </div>
+
+      <div className="space-y-3 pt-2">
+        <FunnelButton onClick={handleContinue} disabled={!value.trim()}>
+          Continue
+        </FunnelButton>
+        <FunnelButton variant="back" onClick={prevField}>
+          Back
+        </FunnelButton>
+      </div>
+    </div>
+  );
+}
