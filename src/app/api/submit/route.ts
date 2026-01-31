@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { runSEOAudit, formatAuditForSlack } from '@/lib/seo-audit';
 
 export async function POST(request: Request) {
   try {
@@ -10,13 +9,29 @@ export async function POST(request: Request) {
     // Format the submission details
     const submissionTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 
-    // Run SEO audit if website is provided
-    let seoAudit = null;
-    if (website) {
-      seoAudit = await runSEOAudit(website);
+    // Send to n8n for SEO audit workflow (if webhook URL is configured)
+    if (process.env.N8N_WEBHOOK_URL) {
+      fetch(process.env.N8N_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          city,
+          businessName,
+          address,
+          phone,
+          website,
+          rating,
+          reviewCount,
+          email,
+          userPhone,
+          submittedAt: submissionTime,
+        }),
+      }).catch(err => console.error('n8n webhook error:', err));
     }
 
-    // 1. Send Slack notification - Lead Info
+    // Send Slack notification - Lead Info
     if (process.env.SLACK_WEBHOOK_URL) {
       const leadBlocks = [
         {
@@ -58,70 +73,20 @@ export async function POST(request: Request) {
         }
       ];
 
-      // Send lead notification
       await fetch(process.env.SLACK_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blocks: leadBlocks })
       });
-
-      // Send SEO audit as separate message (if available)
-      if (seoAudit) {
-        const auditBlocks = formatAuditForSlack(seoAudit);
-        await fetch(process.env.SLACK_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blocks: auditBlocks })
-        });
-      } else if (website) {
-        // Website provided but audit failed
-        await fetch(process.env.SLACK_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            blocks: [{
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `⚠️ *SEO Audit Failed*\nCould not analyze website: ${website}\n_Site may be down or blocking requests._`
-              }
-            }]
-          })
-        });
-      }
     }
 
-    // 2. Send email notification (optional)
+    // Send email notification (optional)
     if (process.env.RESEND_API_KEY && process.env.NOTIFICATION_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
-
-      // Build SEO audit HTML section if available
-      const seoAuditHtml = seoAudit ? `
-        <h2 style="color: #374151; margin-top: 24px;">SEO Audit Results</h2>
-        <div style="background: ${seoAudit.canHelp ? '#ECFDF5' : '#FEF2F2'}; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-          <p style="margin: 0; font-size: 24px; font-weight: bold; color: ${seoAudit.canHelp ? '#059669' : '#DC2626'};">
-            Grade: ${seoAudit.grade} (${seoAudit.score}/100)
-          </p>
-          <p style="margin: 8px 0 0 0; color: #374151;">${seoAudit.summary}</p>
-        </div>
-        <table style="width: 100%; border-collapse: collapse;">
-          ${seoAudit.checks.map(check => `
-            <tr>
-              <td style="padding: 8px 0; color: #6B7280;">${check.passed ? '✅' : '❌'} ${check.name}</td>
-              <td style="padding: 8px 0; color: #111827;">${check.value}</td>
-            </tr>
-          `).join('')}
-        </table>
-        <p style="margin-top: 16px; padding: 12px; background: ${seoAudit.canHelp ? '#ECFDF5' : '#FEF2F2'}; border-radius: 8px;">
-          <strong>${seoAudit.canHelp ? '✅ Good candidate' : '⚠️ Needs work'}:</strong>
-          ${seoAudit.canHelp ? 'This site has a solid foundation for Local SEO.' : 'Site may need fixes before Local SEO will be effective.'}
-        </p>
-      ` : '';
-
       await resend.emails.send({
         from: 'Touchpoint Media <notifications@resend.dev>',
         to: process.env.NOTIFICATION_EMAIL,
-        subject: `🎉 New Lead: ${businessName} - ${firstName} ${lastName}${seoAudit ? ` [SEO: ${seoAudit.grade}]` : ''}`,
+        subject: `🎉 New Lead: ${businessName} - ${firstName} ${lastName}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #2563EB; border-bottom: 2px solid #2563EB; padding-bottom: 10px;">New Lead Submission</h1>
@@ -175,8 +140,6 @@ export async function POST(request: Request) {
               </tr>
               ` : ''}
             </table>
-
-            ${seoAuditHtml}
 
             <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px; padding-top: 16px; border-top: 1px solid #E5E7EB;">
               Submitted at ${submissionTime}
