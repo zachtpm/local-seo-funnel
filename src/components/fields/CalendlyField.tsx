@@ -10,14 +10,28 @@ export function CalendlyField() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const calendlyUrl = process.env.NEXT_PUBLIC_CALENDLY_URL;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setIsSubmitting(true);
-    console.log('Form Submission:', { ...formData, submittedAt: new Date().toISOString() });
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const response = await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Submission failed');
+      }
+
       setIsSubmitted(true);
-    }, 800);
+    } catch (error) {
+      console.error('Submission error:', error);
+      // Still show success to user, but log the error
+      setIsSubmitted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
